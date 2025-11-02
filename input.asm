@@ -1,6 +1,6 @@
 .data
-    input:      .asciiz "desired.txt"
-    desired:	.asciiz "input.txt"
+    input: .asciiz "input.txt"
+    desired:	.asciiz "desired.txt"
     
 
     # Use large buffers to safely handle large files.
