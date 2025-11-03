@@ -85,9 +85,6 @@ parse_loop:
     li $t8, 32
     beq $t7, $t8, store_number
     
-    li $t8, 10
-    beq $t7, $t8, store_number
-    
     li $t8, 46
     beq $t7, $t8, set_decimal
     
