@@ -1,33 +1,32 @@
 .data
     input: .asciiz "input.txt"
-    desired:	.asciiz "desired.txt"
-    
+    desired: .asciiz "desired.txt"
 
-    # Use large buffers to safely handle large files.
-    fileWords:  .space 8192       # Buffer for file content
+    fileWords: .space 512        # Buffer for file content
     .align 2
-    # Allocate space for 500 numbers
-    input_array: .space 2000        # Array for floats from input.txt
-    desired_array: .space 2000	   # Array for floats from desired.txt
+    # Allocate space for 10 floats (10 * 4 bytes = 40)
+    input_signal: .space 40      # Array for floats from input.txt (input signal sequence)
+    desired_signal: .space 40     # Array for floats from desired.txt (desired signal sequence)
 
-    newline:    .asciiz "\n"
-    ten_float:  .float 10.0        # Constant 10.0 for division
+    newline: .asciiz "\n"
+    ten_float: .float 10.0      # Constant 10.0 for division
 
 .text
 .globl main
 
 main:
     la $a0, input
-    la $a1, input_signal
+    la $a1, input_signal         # Pass base address of input_signal array
     jal inputFile
     
-    move $s2, $v0           
+    move $s2, $v0                # Save the count of floats read from input.txt
 
     la $a0, desired
-    la $a1, desired_signal
+    la $a1, desired_signal       # Pass base address of desired_signal array
     jal inputFile
     
-    move $s3, $v0
+    move $s3, $v0                # Save the count of floats read from desired.txt
+
     # Fall through to the printing section
     j print_floats
     
@@ -40,34 +39,27 @@ main:
 # Returns:   $v0: The number of floats successfully read.
 # -----------------------------------------------------------------
 inputFile:
-    addi $sp, $sp, -16   
-    sw $s0, 12($sp)     
+    addi $sp, $sp, -16    
+    sw $s0, 12($sp)      
     sw $s1, 8($sp)
     sw $a0, 4($sp)      
     sw $a1, 0($sp)
 
     # STAGE 1: OPEN FILE
-    lw $a0, 4($sp)      # Restore file name argument for syscall
+    lw $a0, 4($sp)        # Restore file name argument for syscall
     li $v0, 13
     li $a1, 0
     li $a2, 0
     syscall
-    move $s0, $v0       # Save file descriptor in $s0
+    move $s0, $v0         # Save file descriptor in $s0
 
-    # STAGE 2: READ FILE IN CHUNKS
-    li   $s1, 0
-    la   $t0, fileWords
-read_loop:
-    li   $v0, 14
-    move $a0, $s0
-    move $a1, $t0
-    li   $a2, 4096
+    # STAGE 2: READ FILE (Simplified to a single read)
+    li   $v0, 14          # syscall: read from file
+    move $a0, $s0         # file descriptor
+    la   $a1, fileWords   # buffer
+    li   $a2, 256         # max bytes to read (our buffer size)
     syscall
-    beq  $v0, $zero, done_reading
-    addu $s1, $s1, $v0
-    addu $t0, $t0, $v0
-    j    read_loop
-done_reading:
+    move $s1, $v0         # Save the number of bytes read into $s1
     
     # STAGE 3: CLOSE FILE
     li $v0, 16
@@ -91,9 +83,6 @@ parse_loop:
     beq $t7, $t8, set_neg
     
     li $t8, 32
-    beq $t7, $t8, store_number
-    
-    li $t8, 10
     beq $t7, $t8, store_number
     
     li $t8, 46
@@ -149,7 +138,7 @@ store_val:
     div.s $f0, $f0, $f1
     
     sll $t7, $t1, 2
-    lw $t8, 0($sp)      # array base address from stack
+    lw $t8, 0($sp)        # array base address from stack
     add $t8, $t8, $t7
     s.s $f0, 0($t8)
     
@@ -186,11 +175,11 @@ store_val_last:
     div.s $f0, $f0, $f1
     
     sll $t7, $t1, 2
-    lw $t8, 0($sp)      # Use LW to load the array base address
+    lw $t8, 0($sp)        # Use LW to load the array base address
     add $t8, $t8, $t7
     s.s $f0, 0($t8)
     
-    addi $t1, $t1, 1    # Increment the final count
+    addi $t1, $t1, 1      # Increment the final count
 
 exit_inputFile:
     move $v0, $t1
@@ -204,45 +193,45 @@ exit_inputFile:
     jr $ra
 
 print_floats:
-    li $t3, 0           # Loop counter i = 0
+    li $t3, 0             # Loop counter i = 0
 
 print_loop:
-    bge $t3, $s2, done  # Use the saved count in $s2 as the loop limit
+    bge $t3, $s2, done    # Use the saved count in $s2 as the loop limit
 
-    # Calculate address of input_array[i]
+    # Calculate address of input_signal[i]
     sll $t7, $t3, 2
-    la $t8, input_array 
+    la $t8, input_signal  # Use the new array name
     add $t8, $t8, $t7
-    lwc1 $f12, 0($t8)   # Load float into $f12 for printing
+    lwc1 $f12, 0($t8)     # Load float into $f12 for printing
 
     li $v0, 2
-    syscall             # Print float
+    syscall               # Print float
     
     li $v0, 4
     la $a0, newline
-    syscall             # Print newline
+    syscall               # Print newline
 
-    addi $t3, $t3, 1    # i++
+    addi $t3, $t3, 1      # i++
     j print_loop
 done:
-    li $t3, 0 
+    li $t3, 0  
 print_loop2:
-    bge $t3, $s3, exit  # Use the saved count in $s2 as the loop limit
+    bge $t3, $s3, exit    # Use the saved count in $s3 as the loop limit
 
-    # Calculate address of input_array[i]
+    # Calculate address of desired_signal[i]
     sll $t7, $t3, 2
-    la $t8, desired_array 
+    la $t8, desired_signal # Use the new array name
     add $t8, $t8, $t7
-    lwc1 $f12, 0($t8)   # Load float into $f12 for printing
+    lwc1 $f12, 0($t8)     # Load float into $f12 for printing
 
     li $v0, 2
-    syscall             # Print float
+    syscall               # Print float
     
     li $v0, 4
     la $a0, newline
-    syscall             # Print newline
+    syscall               # Print newline
 
-    addi $t3, $t3, 1    # i++
+    addi $t3, $t3, 1      # i++
     j print_loop2
 
 exit:
