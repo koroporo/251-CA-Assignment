@@ -17,19 +17,15 @@
 .globl main
 
 main:
-    # --- Set up arguments for the function call ---
-    la $a0, input           # Arg 0: file name address
-    la $a1, input_array     # Arg 1: array address
-    jal inputFile           # Call the function
+    la $a0, input
+    la $a1, input_signal
+    jal inputFile
     
-    # --- After function returns, prepare for printing ---
-    # $v0 now holds the number of floats read.
-    # We must save it because the print syscalls will overwrite $v0.
-    move $s2, $v0           # Save float count in a saved register, $s2
+    move $s2, $v0           
 
-    la $a0, desired           # Arg 0: file name address
-    la $a1, desired_array     # Arg 1: array address
-    jal inputFile           # Call the function
+    la $a0, desired
+    la $a1, desired_signal
+    jal inputFile
     
     move $s3, $v0
     # Fall through to the printing section
