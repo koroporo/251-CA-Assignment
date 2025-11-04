@@ -1,22 +1,26 @@
 .data
 	output_file: .asciiz "output.txt"
-	test_array: .float 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, -1.4, 9.3, -123.1
+	output_signal: .float 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, -1.4, 9.3, -123.1, 12.0
+	output_text: .asciiz "Filtered output: "
+	output_mmse: .asciiz "\nMMSE: "
 	whitespace: .asciiz " "
 	buffer: .space 10
 	float_10: .float 10.0
 	float_0: .float 0.0
+	mmse: .float 123.1
 .text
 main:
 	la $a0, output_file
-	la $a1, test_array
-	li $a2, 9
+	la $a1, output_signal
+	li $a2, 10
+	l.s $f12, mmse
 	jal write_to_file
 
 exit:
 	li $v0, 10
 	syscall
-# Writes an array of string to specified file
-# Arguments: $a0: string containing file name, $a1: array of floats, $a2: size of array
+# Writes the output to a file
+# Arguments: $a0: string containing file name, $a1: array of floats, $a2: size of array, $f12: mmse
 # Returns: N/A
 write_to_file:
 	addi $sp, $sp, -24
@@ -40,8 +44,14 @@ write_to_file:
 	move $s3, $v0 #file descriptor
 	
 	li $s4, 0
+	
+	li $v0, 15
+	move $a0, $s3
+	la $a1, output_text
+	li $a2, 17
+	syscall
 write_loop:
-	bge $s4, $s2, end_write
+	bge $s4, $s2, end_loop
 	sll $t1, $s4, 2
 	add $t1, $s1, $t1
 	l.s $f12, 0($t1)
@@ -66,7 +76,25 @@ write_loop:
 skip_space:
 	j write_loop
 	
-end_write:
+end_loop:
+	li $v0, 15
+	move $a0, $s3
+	la $a1, output_mmse
+	li $a2, 7
+	syscall
+	
+	la $a0, buffer
+	jal ftoa
+	
+	move $t2, $v0
+	move $t3, $v1
+	
+	li $v0, 15
+	move $a0, $s3
+	move $a1, $t2
+	move $a2, $t3
+	syscall
+	
 	li $v0, 16
 	move $a0, $s3
 	syscall
