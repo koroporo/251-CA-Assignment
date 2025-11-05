@@ -101,6 +101,8 @@ def main():
     M = args.order
     r = autocorr_biased(x, M - 1)        # r[0..M-1]
     p = crosscorr_biased(x, d, M - 1)    # p[0..M-1]
+    print(f"Autocorr: {list(map(lambda x : round(x, 1), r))}")
+    print(f"Crosscorr: {list(map(lambda x : round(x, 1), p))}")
     R = toeplitz_from_r(r, M)
     with open("r_matrix.txt", "w") as file:
         for line in R:
@@ -108,8 +110,10 @@ def main():
     # print(R)
     # solve R w = p
     w = solve_linear(R, p)
+    print(f"Solution: {list(map(lambda x : round(x, 4), w))}")
 
     y = apply_fir(x, w)
+    print(f"Output signal: {list(map(lambda x : round(x, 1), y))}")
     x = y
     # compute MSE
     mse = sum((di - yi) ** 2 for di, yi in zip(d, y)) / len(d)

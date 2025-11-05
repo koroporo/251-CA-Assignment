@@ -16,11 +16,16 @@
 	lw $a3, M
 	jal apply_filter
 	
+	
 	la $a0, desired_signal
 	la $a1, optimize_coefficient
 	li $a2, 4
 	lw $a3, M
+	addi $sp, $sp, -4
+	la $t0, crosscorr
+	sw $t0, 0($sp)
 	jal mmse
+	addi $sp, $sp, 4
 	
 	li $v0, 2
 	mov.s $f12, $f0
@@ -33,7 +38,7 @@
 print_floats:
     li $t3, 0             # Loop counter i = 0
 
-print_loop:
+print_loop2:
     bge $t3, 4, done    # Use the saved count in $s2 as the loop limit
 
     # Calculate address of input_signal[i]
@@ -51,7 +56,7 @@ print_loop:
 
     addi $t3, $t3, 1      # i++
     j print_loop
-done:
+done2:
 	li $v0, 10
 	syscall
 
@@ -118,6 +123,8 @@ end_n_loop:
 # Arguments: $a0: address of desired values, $a1: address of coefficients, $a2: size of values, $a3: order of filter
 # Returns: $f0: the mmse value
 mmse:
+	lw $t0, 0($sp)
+	
 	addi $sp, $sp, -20
 	sw $s0, 0($sp)
 	sw $s1, 4($sp)
@@ -129,7 +136,7 @@ mmse:
 	move $s1, $a1	# s1 = address of coefficients
 	move $s2, $a2	# s2 = value size 
 	move $s3, $a3	# s3 = filter order
-	la $s4, crosscorr
+	move $s4, $t0
 	
 	l.s $f0, float_0
 	

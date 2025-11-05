@@ -34,6 +34,7 @@ write_to_file:
 	move $s0, $a0
 	move $s1, $a1
 	move $s2, $a2
+	mov.s $f13, $f12
 	
 	li $v0, 13
 	move $a0, $s0
@@ -84,6 +85,7 @@ end_loop:
 	syscall
 	
 	la $a0, buffer
+	mov.s $f12, $f13
 	jal ftoa
 	
 	move $t2, $v0

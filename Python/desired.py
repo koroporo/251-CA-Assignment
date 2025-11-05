@@ -1,7 +1,7 @@
 import numpy as np
 
 # np.random.seed(0)
-result = [2*np.sin(i) + 3 * np.cos(i) for i in range(10)]
+result = [float(i + 1) for i in range(10)]
 
 with open("desired.txt", "w") as file:
     for value in result:
