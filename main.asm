@@ -1,5 +1,4 @@
 .data
-	# --- Định nghĩa file và bộ đệm ---
 	input: .asciiz "input.txt"
 	desired: .asciiz "desired.txt"
 	fileWords: .space 4096
@@ -12,15 +11,13 @@
 	buffer: .space 10
 	float_10: .float 10.0
 	
-	# --- Các biến theo yêu cầu bài tập ---
-	input_signal: .space 40		# Mảng 10 float cho input
-	desired_signal: .space 40	# Mảng 10 float cho desired
+	input_signal: .space 40
+	desired_signal: .space 40	
 	output_signal: .space 40
 	optimize_coefficient: .space 800
 	mmse: .space 4
 	
 
-	# --- Hằng số và chuỗi ---
 	newline: .asciiz "\n"
 	ten_float: .float 10.0
 	N_limit:	.word	10
@@ -34,47 +31,37 @@
     float_0: .float 0.0
 	str_space:	.asciiz " "
 	str_err_size: .asciiz "Error: size not match"
-	str_ac:		.asciiz "--- Autocorrelation (AC) ---\n"
-	str_xd:		.asciiz "\n--- Cross-correlation (XD) ---\n"
-	
-	str_prefix: .asciiz "x["
-    str_suffix: .asciiz "] = "
 
 .text
 .globl main
 
 main:
 	# Step 1: Input
-	# --- Đọc file input.txt ---
 	la $a0, input
 	la $a1, input_signal		
 	jal inputFile
-	move $s2, $v0				# $s2 = N (số lượng từ input.txt)
+	move $s2, $v0				# $s2 = N_x
 
-	# --- Đọc file desired.txt ---
 	la $a0, desired
 	la $a1, desired_signal		
 	jal inputFile
-	move $s3, $v0				# $s3 = N_d (số lượng từ desired.txt)
+	move $s3, $v0				# $s3 = N_d
 
-	# --- Kiểm tra lỗi size (theo yêu cầu PDF) ---
-	bne $s2, $s3, error_size_mismatch
+	bne $s2, $s3, error_size_mismatch # Check for size mismatch
 
 	# Step 2: Calculae autocorrelation and crosscorrelation
-	# --- Gọi hàm tính Autocorrelation ---
 	la	  $a0, input_signal		# a0 = &x
 	move  $a1, $s2				# a1 = N
 	lw	  $a2, maxlag			# a2 = maxlag
-	la	  $a3, autocorr		# a3 = &result_ac
+	la	  $a3, autocorr		# a3 = &autocorr
 	jal	  estimate_ac_v2
 
-	# --- Gọi hàm tính Cross-correlation ---
 	la	  $a0, desired_signal	# a0 = &d
 	la	  $a1, input_signal		# a1 = &x
 	move  $a2, $s2				# a2 = N
 	lw	  $a3, maxlag			# a3 = maxlag
 	
-	# Truyền &result_xd qua stack
+	# Pass the crosscorr address by the stack
 	addi  $sp, $sp, -4
 	la	  $t0, crosscorr
 	sw	  $t0, 0($sp)
@@ -104,8 +91,6 @@ main:
 	lw $a3, M
 	jal apply_filter
 
-	
-	
 	la $a0, desired_signal
 	la $a1, optimize_coefficient
 	li $a2, 10
@@ -128,10 +113,59 @@ main:
 	l.s $f12, mmse
 	jal write_to_file
 	
-	# Step 6: Print to terminal
 	
+
+	# Step 6: Print to terminal
+	la $a0, output_signal
+	li $a1, 10
+	l.s $f12, mmse
+	jal print_terminal
+	
+	j exit
+	
+print_terminal:
+	addi $sp, $sp, -8
+	sw $s0, 0($sp)
+	sw $s1, 4($sp)
+	
+	move $s0, $a0
+	move $s1, $a1
+	mov.s $f13, $f12
+	
+	li $v0, 4
+	la $a0, output_text
+	syscall
+	li $t0, 0
+	move $t1, $s0
+print_terminal_loop:
+	beq $t0, $s1, end_print_terminal
+	sll $t2, $t0, 2
+	add $t3, $t2, $t1
+	l.s $f12, 0($t3)
+	li $v0, 2
+	syscall
+	
+	li $v0, 4
+	la $a0, whitespace
+	syscall
+	addi $t0, $t0, 1
+	j print_terminal_loop
+
 end_print_terminal:
-	j	  exit				
+	
+	li $v0, 4
+	la $a0, output_mmse
+	syscall
+	
+	li $v0, 2
+	mov.s $f12, $f13
+	syscall
+	
+
+	lw $s0, 0($sp)
+	lw $s1, 4($sp)
+	addi $sp, $sp, 8
+	jr $ra				
 
 error_size_mismatch:
 	li	  $v0, 4
