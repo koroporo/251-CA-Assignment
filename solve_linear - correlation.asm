@@ -13,7 +13,7 @@
 	crosscorr: .float 1.075, 0.5625, 0.4
 # ---- Kích thước n ----
 # Đây là đối số 4 (int n)
-    n: .word 3
+    M: .word 3
 
 
     str_prefix: .asciiz "x["
@@ -29,9 +29,9 @@ main:
     la $a0, autocorr     # a0 = a (address of autocorr array a)
     la $a1, crosscorr        # a1 = b (address of crosscorr b)
     la $a2, solution_vector # a2 = solution (address of solution array)
-    lw $a3, n               # a3 = n (size)
+    lw $a3, M               # a3 = M (size)
     
-    move $s0, $a3           # $s0 = n 
+    move $s0, $a3           # $s0 = M 
     
     # Procedure call 
     jal solve_linear
@@ -39,7 +39,7 @@ main:
     # Print result 
     li $t0, 0               # i = 0 
     
-    move $t1, $s0           # t1 = N (n)
+    move $t1, $s0           # t1 = M (n)
 
 print_loop:
     # out-of-loop condition (if i == N)
