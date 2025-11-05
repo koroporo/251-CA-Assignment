@@ -2,8 +2,8 @@
 fileName:   .asciiz "input.txt" # Make sure this path is correct
 fileWords:  .space 8192        # buffer for file content
 .align 2
-int_array:  .space 8000        # Original array: 1000 integers (4 bytes each)
-float_array:.space 8000        # ADDED: New array to store actual floats
+int_array:  .space 2000        # Original array: 1000 integers (4 bytes each)
+float_array:.space 2000        # ADDED: New array to store actual floats
 newline:    .asciiz "\n"
 
 ten_float:  .float 10.0        # ADDED: The float value 10.0 for division
