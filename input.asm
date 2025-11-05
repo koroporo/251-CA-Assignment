@@ -79,11 +79,11 @@ parse_loop:
     beq $t0, $s1, store_last_number
     lb $t7, fileWords($t0)
     
-    li $t8, 45
-    beq $t7, $t8, set_neg
-    
     li $t8, 32
     beq $t7, $t8, store_number
+    
+    li $t8, 45
+    beq $t7, $t8, set_neg
     
     li $t8, 46
     beq $t7, $t8, set_decimal
