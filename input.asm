@@ -2,7 +2,7 @@
     input: .asciiz "input.txt"
     desired: .asciiz "desired.txt"
 
-    fileWords: .space 512        # Buffer for file content
+    fileWords: .space 4096        # Buffer for file content
     .align 2
     # Allocate space for 10 floats (10 * 4 bytes = 40)
     input_signal: .space 40      # Array for floats from input.txt (input signal sequence)
@@ -57,7 +57,7 @@ inputFile:
     li   $v0, 14          # syscall: read from file
     move $a0, $s0         # file descriptor
     la   $a1, fileWords   # buffer
-    li   $a2, 256         # max bytes to read (our buffer size)
+    li   $a2, 4096         # max bytes to read (our buffer size)
     syscall
     move $s1, $v0         # Save the number of bytes read into $s1
     
