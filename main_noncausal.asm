@@ -16,7 +16,6 @@
 	output_signal: .space 40
 	optimize_coefficient: .space 404
 	mmse: .space 4
-	
 
 	newline: .asciiz "\n"
 	ten_float: .float 10.0
@@ -45,52 +44,43 @@ main:
 	la $a0, desired
 	la $a1, desired_signal		
 	jal inputFile
-	move $s3, $v0				# $s3 = N_d
+	move $s3, $v0		# $s3 = N_d
 
 	bne $s2, $s3, error_size_mismatch # Check for size mismatch
 
-	# Step 2: Calculae autocorrelation and crosscorrelation
-	la	  $a0, input_signal		# a0 = &x
-	move  $a1, $s2				# a1 = N
-	addi	  $a2, $a2, -1			# a2 = maxlag
-	la	  $a3, autocorr		# a3 = &autocorr
+	# Calculae autocorrelation and crosscorrelation
+	la	  $a0, input_signal		# $a0 = &x
+	move  $a1, $s2				# $a1 = N
+	addi	  $a2, $a2, -1		# $a2 = maxlag
+	la	  $a3, autocorr		    # $a3 = &autocorr
 	jal	  estimate_ac_v2
 
-	la	  $a0, desired_signal	# a0 = &d
-	la	  $a1, input_signal		# a1 = &x
-	move  $a2, $s2				# a2 = N
-	lw	  $a3, maxlag			# a3 = maxlag
-	
-	# Pass the crosscorr address by the stack
+	la	  $a0, desired_signal	# $a0 = &d
+	la	  $a1, input_signal		# $a1 = &x
+	move  $a2, $s2				# $a2 = N
+	lw	  $a3, maxlag			# $a3 = maxlag
 	addi  $sp, $sp, -4
 	la	  $t0, crosscorr
 	sw	  $t0, 0($sp)
 	jal	  estimate_xd_v2
 	addi  $sp, $sp, 4
 	
-	
-	
-	
-	# Step 3: Solve linear
-	# Load arg for funct call 
-    la $a0, autocorr     # a0 = a (address of autocorr array a)
-    la $a1, crosscorr        # a1 = b (address of crosscorr b)
+	# Solve linear
+    la $a0, autocorr     		 # a0 = a (address of autocorr array a)
+    la $a1, crosscorr            # a1 = b (address of crosscorr b)
     la $a2, optimize_coefficient # a2 = solution (address of solution array)
-    lw $a3, M               # a3 = M (size)
-    
-    move $s0, $a3           # $s0 = M 
-    
-    # Procedure call 
+    lw $a3, M                    # a3 = M (size)
+    move $s0, $a3                # $s0 = M 
     jal solve_linear
 	
-	
-	# Step 4: Apply filter and calculate MMSE
+	# Apply filter
 	la $a0, optimize_coefficient
 	la $a1, input_signal
 	la $a2, output_signal
 	lw $a3, M
 	jal apply_filter
 
+	# Calculate MMSE
 	la $a0, desired_signal
 	la $a1, optimize_coefficient
 	li $a2, 10
@@ -100,27 +90,26 @@ main:
 	sw $t0, 0($sp)
 	jal cal_mmse
 	addi $sp, $sp, 4
-	
+
+	# Round up the final numbers
 	mov.s $f12, $f0
 	jal round
 	s.s $f0, mmse
 	
-	# Step 5: Print to terminal
+	# Print to terminal
 	la $a0, output_signal
 	li $a1, 10
 	l.s $f12, mmse
 	jal print_terminal
 	
-	# Step 6: Print to terminal
+	# Write to File
 	la $a0, output_file
 	la $a1, output_signal
 	li $a2, 10
 	l.s $f12, mmse
 	jal write_to_file
 	
-	j exit
-	
-				
+	j exit	
 
 error_size_mismatch:
 	li	  $v0, 4
@@ -211,19 +200,19 @@ round:
 
 
 # -----------------------------------------------------------------
-# HÀM: inputFile
-# $a0: Địa chỉ tên file, $a1: Địa chỉ mảng float
+# Function: inputFile
+# $a0: Address input file, $a1: Address of the float array
 # Trả về: $v0: Số lượng float đọc được
 # -----------------------------------------------------------------
 inputFile:
 	addi $sp, $sp, -20	
 	sw $s0, 16($sp)		# s0: file descriptor
-	sw $s1, 12($sp)		# s1: số byte đã đọc
-	sw $a0, 8($sp)		# lưu &filename
-	sw $a1, 4($sp)		# lưu &array
-	sw $s4, 0($sp)		# s4: N_limit (giới hạn 10)
+	sw $s1, 12($sp)		# s1: number of bytes have read
+	sw $a0, 8($sp)		# save &filename
+	sw $a1, 4($sp)		# save &array
+	sw $s4, 0($sp)		# s4: N_limit = 10
 
-	# STAGE 1: MỞ FILE
+	# Open File
 	lw $a0, 8($sp)		
 	li $v0, 13
 	li $a1, 0
@@ -231,73 +220,72 @@ inputFile:
 	syscall
 	move $s0, $v0		
 
-	# STAGE 2: ĐỌC FILE
+	# Read File
 	li   $v0, 14		
 	move $a0, $s0		
 	la   $a1, fileWords	
-	li   $a2, 4096		# Đọc tối đa 256 bytes
+	li   $a2, 4096		# Maximun 256 bytes
 	syscall
 	move $s1, $v0		
 	
-	# STAGE 3: ĐÓNG FILE
+	# Close File
 	li $v0, 16
 	move $a0, $s0
 	syscall
 	
-	# STAGE 4: PARSE BUFFER
-	lw   $s4, N_limit	# $s4 = 10 (giới hạn)
-	li $t0, 0			# con trỏ buffer
-	li $t1, 0 			# $t1 = đếm số float
-	li $t2, 0			# phần nguyên
-	li $t3, 0			# phần thập phân
-	li $t9, 0			# cờ âm (is_negative)
-	li $t5, 0			# cờ đã đọc số (has_digit)
-	li $t6, 0			# cờ dấu chấm (is_decimal)
+	# Parse buffer
+	lw   $s4, N_limit	
+	li $t0, 0			# buffer pointer
+	li $t1, 0 			# $t1 = counting float
+	li $t2, 0			# integer part
+	li $t3, 0			# float part
+	li $t9, 0			# is_negative
+	li $t5, 0			# has_digit
+	li $t6, 0			# is_decimal
 
 parse_loop:
-	bge $t1, $s4, store_last_number	# Nếu đã đủ 10 số, nhảy
-	beq $t0, $s1, store_last_number	# Nếu hết buffer, nhảy
+	bge $t1, $s4, store_last_number	
+	beq $t0, $s1, store_last_number	
 	lb $t7, fileWords($t0)
 	
-	li $t8, 32			# ' '
+	li $t8, 32						# ' '
 	beq $t7, $t8, store_number
-	li $t8, 45			# '-'
+	li $t8, 45						# '-'
 	beq $t7, $t8, set_neg
-	li $t8, 46			# '.'
+	li $t8, 46						# '.'
 	beq $t7, $t8, set_decimal
 	
-	# Kiểm tra nếu là ký tự số '0'-'9'
 	li $t8, 48
 	li $t4, 57
 	blt $t7, $t8, next_char_parse
 	bgt $t7, $t4, next_char_parse
 	
-	sub $t7, $t7, $t8	# Chuyển '0'->0
+	sub $t7, $t7, $t8				# Change char to int
 	beq $t6, 0, accumulate_int
-	move $t3, $t7		# Lưu 1 số thập phân
+	move $t3, $t7					# Save float
 	li $t6, 2
 	j next_char_parse
 accumulate_int:
 	mul $t2, $t2, 10
 	add $t2, $t2, $t7
-	li $t5, 1			# Đánh dấu đã đọc số
+	li $t5, 1						
 next_char_parse:
 	addi $t0, $t0, 1
 	j parse_loop
 set_neg:
-	li $t9, 1			# set is_negative = true
+	li $t9, 1			
 	addi $t0, $t0, 1
 	j parse_loop
 set_decimal:
-	li $t6, 1			# set is_decimal = true
+	li $t6, 1			
 	addi $t0, $t0, 1
 	j parse_loop
 
 store_number:
-	bge $t1, $s4, parse_loop_exit	# Nếu 10 số thì thoát
-	beq $t5, 0, skip_store		# Nếu không có số, bỏ qua
+	bge $t1, $s4, parse_loop_exit	
+	beq $t5, 0, skip_store		    
 	
-	# Kết hợp phần nguyên và 1 số thập phân
+	# Combine decimal and integer
 	beq $t6, 0, no_decimal
 	mul $t2, $t2, 10
 	add $t2, $t2, $t3
@@ -307,21 +295,20 @@ no_decimal:
 after_decimal:
 
 	beq $t9, 0, store_val
-	neg $t2, $t2		# Áp dụng dấu âm
+	neg $t2, $t2		# Apply negative
 store_val:
 	mtc1 $t2, $f0
-	cvt.s.w $f0, $f0	# Chuyển int 
+	cvt.s.w $f0, $f0	# Switch to int 
 	l.s $f1, ten_float
-	div.s $f0, $f0, $f1	# Chia 10.0 
+	div.s $f0, $f0, $f1	# Div 10.0 
 	
 	sll $t7, $t1, 2
-	lw $t8, 4($sp)		# lấy địa chỉ mảng
+	lw $t8, 4($sp)		# Load the array address
 	add $t8, $t8, $t7
-	s.s $f0, 0($t8)		# Lưu float vào mảng
+	s.s $f0, 0($t8)		# Store float to array
 	
-	addi $t1, $t1, 1	# Tăng biến đếm số float
+	addi $t1, $t1, 1	# float++
 	
-	# Reset các biến tạm
 	li $t2, 0
 	li $t3, 0
 	li $t5, 0
@@ -336,8 +323,8 @@ parse_loop_exit:
 	j exit_inputFile
 
 store_last_number:
-	bge $t1, $s4, exit_inputFile #Nếu 10 số thì thoát
-	beq $t5, 0, exit_inputFile # Không có số, thoát
+	bge $t1, $s4, exit_inputFile 
+	beq $t5, 0, exit_inputFile 
 
 	beq $t6, 0, no_decimal_last
 	mul $t2, $t2, 10
@@ -363,7 +350,7 @@ store_val_last:
 	addi $t1, $t1, 1	
 
 exit_inputFile:
-	move $v0, $t1		# Trả về số lượng float ($t1)
+	move $v0, $t1		# return float ($t1)
 
 	lw $s0, 16($sp)
 	lw $s1, 12($sp)
@@ -375,7 +362,7 @@ exit_inputFile:
 	jr $ra
 
 # ---------------------------------------------------------------------
-# HÀM: estimate_ac_v2 (Autocorrelation)
+# Function: estimate_ac_v2 (Autocorrelation)
 # $a0: &x, $a1: N, $a2: maxlag, $a3: &result_ac
 # ---------------------------------------------------------------------
 estimate_ac_v2:
@@ -398,26 +385,26 @@ estimate_ac_v2:
 	
 	li	  $s4, 0			# k = 0
 outer_loop_ac:
-	bgt	  $s4, $s2, end_outer_loop_ac # Vòng lặp ngoài (k)
+	bgt	  $s4, $s2, end_outer_loop_ac 
 	
 	move  $s5, $s4			# n = k
-	addi  $t1, $s1, -1		# Giới hạn N-1
+	addi  $t1, $s1, -1		# Bound N-1
 	
-	li	  $t8, 0			# SỬA LỖI: f12 = 0.0
+	li	  $t8, 0			
 	mtc1  $t8, $f12			
 inner_loop_ac:
-	bgt	  $s5, $t1, end_inner_loop_ac # Vòng lặp trong (n)
+	bgt	  $s5, $t1, end_inner_loop_ac 
 	
-	# Tính địa chỉ &x[n]
+	#&x[n]
 	sll	  $t2, $s5, 2
 	add	  $t3, $s0, $t2	
 	
-	# Tính địa chỉ &x[n-k]
+	#&x[n-k]
 	sub	  $t4, $s5, $s4
 	sll	  $t5, $t4, 2
 	add	  $t6, $s0, $t5	
 	
-	# Tính sum += x[n] * x[n-k]
+	#sum += x[n] * x[n-k]
 	l.s	  $f14, 0($t3)
 	l.s	  $f16, 0($t6)
 	mul.s $f18, $f14, $f16
@@ -426,10 +413,9 @@ inner_loop_ac:
 	addi  $s5, $s5, 1		# n++
 	j	  inner_loop_ac
 end_inner_loop_ac:
-	# Chuẩn hóa: sum / N (Biased)
-	div.s $f12, $f12, $f10	
+	div.s $f12, $f12, $f10	#sum / N (Biased)
 	
-	# Lưu kết quả vào result_ac[k]
+	# Store in result_ac[k]
 	sll	  $t2, $s4, 2
 	add	  $t3, $s3, $t2	
 	s.s	  $f12, 0($t3)	
@@ -437,7 +423,7 @@ end_inner_loop_ac:
 	addi  $s4, $s4, 1		# k++
 	j	  outer_loop_ac
 end_outer_loop_ac:
-	# Khôi phục stack
+	# Restore stack
 	lw	  $s5, 0($sp)
 	lw	  $s4, 4($sp)
 	lw	  $s3, 8($sp)
@@ -449,12 +435,7 @@ end_outer_loop_ac:
 	jr	  $ra
 
 # ---------------------------------------------------------------------
-# HÀM: estimate_xd_v2 (Cross-correlation)
-# $a0: &d, $a1: &x, $a2: N, $a3: maxlag
-# 0($sp): &result_xd
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# HÀM: estimate_xd_v2 (Cross-correlation - NON-CAUSAL)
+# Function: estimate_xd_v2 (Cross-correlation - NON-CAUSAL)
 # $a0: &d, $a1: &x, $a2: N, $a3: maxlag
 # 0($sp): &result_xd
 # ---------------------------------------------------------------------
@@ -469,53 +450,48 @@ estimate_xd_v2:
 	sw	  $s5, 4($sp)
 	sw	  $s6, 0($sp)
 	
-	move  $s0, $a0			# s0 = &d
-	move  $s1, $a1			# s1 = &x
-	move  $s2, $a2			# s2 = N
-	move  $s3, $a3			# s3 = maxlag
-	lw	  $s4, 32($sp)		# nạp &result_xd từ stack
+	move  $s0, $a0						# s0 = &d
+	move  $s1, $a1						# s1 = &x
+	move  $s2, $a2						# s2 = N
+	move  $s3, $a3						# s3 = maxlag
+	lw	  $s4, 32($sp)					# Load &result_xd to stack
 	
 	mtc1  $s2, $f10
-	cvt.s.w $f10, $f10		# f10 = (float)N
+	cvt.s.w $f10, $f10					# f10 = (float)N
 	
-	sub $s5, $zero, $s3   # s5 = k = -maxlag
+	sub $s5, $zero, $s3					# s5 = k = -maxlag
 	
 outer_loop_xd:
-	bgt	  $s5, $s3, end_outer_loop_xd # Vòng lặp k (từ -maxlag đến +maxlag)
-	
-	# --- Tính start_n = max(0, k) ---
-	li $s6, 0           	# s6 (start_n) = 0 (giả định k < 0)
-	bgez $s5, skip_lb_k   	# if (k >= 0) thì nhảy
-	j skip_lb_k_continue 	# (k < 0, start_n = 0 là đúng, nhảy)
+	bgt	  $s5, $s3, end_outer_loop_xd	# For loop k (-maxlag, maxlag)
+	li $s6, 0           				# $s6 (start_n) = 0 (if k < 0)
+	bgez $s5, skip_lb_k   	
+	j skip_lb_k_continue 	
 skip_lb_k:
-	move $s6, $s5         	# SỬA LỖI: start_n = k (vì k >= 0)
+	move $s6, $s5         				# $6 (start_n) = k (if k >= 0)
 skip_lb_k_continue:
-	# s6 bây giờ chứa max(0, k)
-	
-	# --- Tính end_n = min(N, N+k) --- (Logic này ĐÚNG)
-	addi  $t1, $s2, 0       # t1 = N
-	add $t7, $s2, $s5       # t7 = N + k
-	bge $t7, $t1, skip_ub_k # if (N + k >= N) -> end_n = N
-	move $t1, $t7         	# else -> end_n = N + k
+	addi  $t1, $s2, 0       			# t1 = N
+	add $t7, $s2, $s5       			# t7 = N + k
+	bge $t7, $t1, skip_ub_k 			# if (N + k >= N) -> end_n = N
+	move $t1, $t7         				# else -> end_n = N + k
 skip_ub_k:
 	# t1 bây giờ chứa min(N, N+k)
 	
 	li	  $t8, 0			
-	mtc1  $t8, $f12			# f12 = sum = 0.0
+	mtc1  $t8, $f12						# f12 = sum = 0.0
 	
 inner_loop_xd:
-	bge	  $s6, $t1, end_inner_loop_xd # Vòng lặp n (từ start_n đến end_n)
+	bge	  $s6, $t1, end_inner_loop_xd	# For loop n (start_n, end_n)
 	
-	# Tính địa chỉ &d[n]
+	# &d[n]
 	sll	  $t2, $s6, 2
 	add	  $t3, $s0, $t2	
 	
-	# Tính địa chỉ &x[n-k]
+	# &x[n-k]
 	sub	  $t4, $s6, $s5
 	sll	  $t5, $t4, 2
 	add	  $t6, $s1, $t5	
 	
-	# Tính sum += d[n] * x[n-k]
+	# sum += d[n] * x[n-k]
 	l.s	  $f14, 0($t3)		
 	l.s	  $f16, 0($t6)		
 	mul.s $f18, $f14, $f16
@@ -524,19 +500,18 @@ inner_loop_xd:
 	addi  $s6, $s6, 1
 	j	  inner_loop_xd
 end_inner_loop_xd:
-	# Chuẩn hóa: sum / N
-	div.s $f12, $f12, $f10	
+	div.s $f12, $f12, $f10				# Sum / N
 	
-	# Lưu kết quả vào result_xd[k + maxlag] (Logic này ĐÚNG)
+	# Store in result_xd[k + maxlag] 
 	add	  $t2, $s5, $s3
 	sll	  $t2, $t2, 2
 	add	  $t3, $s4, $t2
 	s.s	  $f12, 0($t3)
 	
-	addi  $s5, $s5, 1 # k++
+	addi  $s5, $s5, 1 					# k++
 	j	  outer_loop_xd
 end_outer_loop_xd:
-	# Khôi phục stack
+	# Restore stack
 	lw	  $s6, 0($sp)
 	lw	  $s5, 4($sp)
 	lw	  $s4, 8($sp)
