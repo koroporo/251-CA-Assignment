@@ -21,8 +21,8 @@
 	newline: .asciiz "\n"
 	ten_float: .float 10.0
 	N_limit:	.word	10
-	M: .word 17
-	maxlag:		.word	8	
+	M: .word 101
+	maxlag:		.word	50
 	autocorr:	.space	404		
 	crosscorr:	.space	404
 	
@@ -101,8 +101,8 @@ main:
 	jal cal_mmse
 	addi $sp, $sp, 4
 	
-	# mov.s $f12, $f0
-	# jal round
+	mov.s $f12, $f0
+	jal round
 	s.s $f0, mmse
 	
 	# Step 5: Print to terminal
@@ -1008,8 +1008,8 @@ continue_k_loop:
 end_k_loop:
 
 	# SỬA LỖI: Xóa hàm round không cần thiết
-	# mov.s $f12, $f0
-	# jal round
+	mov.s $f12, $f0
+	jal round
 	
 	# Lưu y[n]
 	sll $t3, $t0, 2
