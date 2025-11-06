@@ -14,17 +14,17 @@
 	input_signal: .space 40
 	desired_signal: .space 40	
 	output_signal: .space 40
-	optimize_coefficient: .space 800
+	optimize_coefficient: .space 404
 	mmse: .space 4
 	
 
 	newline: .asciiz "\n"
 	ten_float: .float 10.0
 	N_limit:	.word	10
-	M: .word 200		
-	maxlag:		.word	199		
-	autocorr:	.space	800		
-	crosscorr:	.space	800
+	M: .word 17
+	maxlag:		.word	8	
+	autocorr:	.space	404		
+	crosscorr:	.space	404
 	
 	EPSILON: .float 1.0e-8  
     ZERO_S: .float 0.0     
@@ -40,7 +40,7 @@ main:
 	la $a0, input
 	la $a1, input_signal		
 	jal inputFile
-	move $s2, $v0				# $s2 = N_x
+	move $s2, $v0		# $s2 = N_x
 
 	la $a0, desired
 	la $a1, desired_signal		
@@ -52,7 +52,7 @@ main:
 	# Step 2: Calculae autocorrelation and crosscorrelation
 	la	  $a0, input_signal		# a0 = &x
 	move  $a1, $s2				# a1 = N
-	lw	  $a2, maxlag			# a2 = maxlag
+	addi	  $a2, $a2, -1			# a2 = maxlag
 	la	  $a3, autocorr		# a3 = &autocorr
 	jal	  estimate_ac_v2
 
@@ -101,8 +101,8 @@ main:
 	jal cal_mmse
 	addi $sp, $sp, 4
 	
-	mov.s $f12, $f0
-	jal round
+	# mov.s $f12, $f0
+	# jal round
 	s.s $f0, mmse
 	
 	# Step 5: Print to terminal
@@ -453,6 +453,11 @@ end_outer_loop_ac:
 # $a0: &d, $a1: &x, $a2: N, $a3: maxlag
 # 0($sp): &result_xd
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# HÀM: estimate_xd_v2 (Cross-correlation - NON-CAUSAL)
+# $a0: &d, $a1: &x, $a2: N, $a3: maxlag
+# 0($sp): &result_xd
+# ---------------------------------------------------------------------
 estimate_xd_v2:
 	addi  $sp, $sp, -32
 	sw	  $ra, 28($sp)
@@ -473,30 +478,46 @@ estimate_xd_v2:
 	mtc1  $s2, $f10
 	cvt.s.w $f10, $f10		# f10 = (float)N
 	
-	li	  $s5, 0			# k = 0
-outer_loop_xd:
-	bgt	  $s5, $s3, end_outer_loop_xd # Vòng lặp ngoài (k)
+	sub $s5, $zero, $s3   # s5 = k = -maxlag
 	
-	move  $s6, $s5			# n = k
-	addi  $t1, $s2, -1		# Giới hạn N-1
+outer_loop_xd:
+	bgt	  $s5, $s3, end_outer_loop_xd # Vòng lặp k (từ -maxlag đến +maxlag)
+	
+	# --- Tính start_n = max(0, k) ---
+	li $s6, 0           	# s6 (start_n) = 0 (giả định k < 0)
+	bgez $s5, skip_lb_k   	# if (k >= 0) thì nhảy
+	j skip_lb_k_continue 	# (k < 0, start_n = 0 là đúng, nhảy)
+skip_lb_k:
+	move $s6, $s5         	# SỬA LỖI: start_n = k (vì k >= 0)
+skip_lb_k_continue:
+	# s6 bây giờ chứa max(0, k)
+	
+	# --- Tính end_n = min(N, N+k) --- (Logic này ĐÚNG)
+	addi  $t1, $s2, 0       # t1 = N
+	add $t7, $s2, $s5       # t7 = N + k
+	bge $t7, $t1, skip_ub_k # if (N + k >= N) -> end_n = N
+	move $t1, $t7         	# else -> end_n = N + k
+skip_ub_k:
+	# t1 bây giờ chứa min(N, N+k)
 	
 	li	  $t8, 0			
-	mtc1  $t8, $f12			
-inner_loop_xd:
-	bgt	  $s6, $t1, end_inner_loop_xd # Vòng lặp trong (n)
+	mtc1  $t8, $f12			# f12 = sum = 0.0
 	
-	# Tính địa chỉ &d[n] (KHÁC BIỆT 1)
+inner_loop_xd:
+	bge	  $s6, $t1, end_inner_loop_xd # Vòng lặp n (từ start_n đến end_n)
+	
+	# Tính địa chỉ &d[n]
 	sll	  $t2, $s6, 2
 	add	  $t3, $s0, $t2	
 	
-	# Tính địa chỉ &x[n-k] (Giống hệt)
+	# Tính địa chỉ &x[n-k]
 	sub	  $t4, $s6, $s5
 	sll	  $t5, $t4, 2
 	add	  $t6, $s1, $t5	
 	
-	# Tính sum += d[n] * x[n-k] (KHÁC BIỆT 2)
-	l.s	  $f14, 0($t3)		# f14 = d[n]
-	l.s	  $f16, 0($t6)		# f16 = x[n-k]
+	# Tính sum += d[n] * x[n-k]
+	l.s	  $f14, 0($t3)		
+	l.s	  $f16, 0($t6)		
 	mul.s $f18, $f14, $f16
 	add.s $f12, $f12, $f18
 	
@@ -506,12 +527,13 @@ end_inner_loop_xd:
 	# Chuẩn hóa: sum / N
 	div.s $f12, $f12, $f10	
 	
-	# Lưu kết quả vào result_xd[k]
-	sll	  $t2, $s5, 2
+	# Lưu kết quả vào result_xd[k + maxlag] (Logic này ĐÚNG)
+	add	  $t2, $s5, $s3
+	sll	  $t2, $t2, 2
 	add	  $t3, $s4, $t2
 	s.s	  $f12, 0($t3)
 	
-	addi  $s5, $s5, 1
+	addi  $s5, $s5, 1 # k++
 	j	  outer_loop_xd
 end_outer_loop_xd:
 	# Khôi phục stack
@@ -525,7 +547,6 @@ end_outer_loop_xd:
 	lw	  $ra, 28($sp)
 	addi  $sp, $sp, 32
 	jr	  $ra
-	
 # -----------------------------------------------------------------
 # void solve_linear(float* autocorr, float* crosscorr, float* solution, int n)
 # -----------------------------------------------------------------
@@ -924,54 +945,81 @@ end_loop_i_back:
 # Applies the Wiener filter to the input
 # Arguments: $a0: address of array of Wiener coefficients, $a1: address of input array, $a2: address of output array, $a3: order of filter
 apply_filter:
-	addi $sp, $sp, -40
+	addi $sp, $sp, -44
 	sw $s0, 0($sp)
 	sw $s1, 4($sp)
 	sw $s2, 8($sp)
 	sw $s3, 12($sp)
-	sw $t0, 16, ($sp)
+	sw $t0, 16($sp) 		# SỬA LỖI: Xóa dấu phẩy
 	sw $t1, 20($sp)
 	sw $t2, 24($sp)
 	sw $t3, 28($sp)
 	sw $t4, 32($sp)
 	sw $ra, 36($sp)
+	sw $s4, 40($sp)
 	
-	move $s0, $a0
-	move $s1, $a1
-	move $s2, $a2
-	move $s3, $a3  # s3 = order of filter
+	move $s0, $a0 # s0 = &w (h)
+	move $s1, $a1 # s1 = &x
+	move $s2, $a2 # s2 = &y
+	move $s3, $a3 # s3 = M (order)
 	
-	addi $t0, $0, 0
+	# Tính delay = (M - 1) / 2
+	move $s4, $s3
+	addi $s4, $s4, -1
+	divu $s4, $s4, 2 # s4 = delay
+	
+	lw $t5, N_limit # t5 = N (ví dụ: 10)
+	
+	li $t0, 0 # n = 0
 n_loop:
-	beq $t0, 10, end_n_loop
-	l.s $f0, float_0
-	addi $t1, $0, 0 # n
+	beq $t0, $t5, end_n_loop # Lặp N lần (0 đến N-1)
+	
+	l.s $f0, float_0 # f0 = y[n] = 0.0
+	li $t1, 0 # k = 0
 k_loop:
-	beq, $t1, $a3, end_k_loop
-	sub $t2, $t0, $t1        # n - k
-	bltz $t2, end_k_loop     # if n - k < 0, break inner loop
-	sll $t3, $t1, 2          # t3 = k * 4 
-	add $t4, $t3, $s0        # address of h[k]
+	beq $t1, $s3, end_k_loop # Lặp M lần (0 đến M-1)
+	
+	# Tính idx = n - k + delay
+	sub $t2, $t0, $t1		 # n - k
+	add $t2, $t2, $s4		 # t2 = idx = (n - k) + delay
+	
+	# Kiểm tra biên: if (idx < 0) or (idx >= N)
+	bltz $t2, continue_k_loop 
+	bge $t2, $t5, continue_k_loop # SỬA LỖI: Dùng $t5 (N) thay vì 10
+	
+	# --- Chỉ thực hiện nếu idx nằm trong biên ---
+	# Tải w[k]
+	sll $t3, $t1, 2			 # t3 = k * 4	
+	add $t4, $t3, $s0		 # address of w[k]
 	l.s $f1, 0($t4)
 	
-	sll $t3, $t2, 2          # t3 = (n - k) * 4
-	add $t4, $t3, $s1        # address of x[n-k]
+	# Tải x[idx]
+	sll $t3, $t2, 2			 # t3 = idx * 4
+	add $t4, $t3, $s1		 # address of x[idx]
 	l.s $f2, 0($t4)
 
-	mul.s $f3, $f1, $f2      # f3 = h[k] * x[n-k]
-	add.s $f0, $f0, $f3      # y[n] += h[k] * x[n-k]
-	addi $t1, $t1, 1
+	mul.s $f3, $f1, $f2		 # f3 = w[k] * x[idx]
+	add.s $f0, $f0, $f3		 # y[n] += ...
+	# --- Hết khối if ---
+
+continue_k_loop:
+	addi $t1, $t1, 1 # k++
 	j k_loop
 end_k_loop:
 
-	mov.s $f12, $f0
-	jal round
+	# SỬA LỖI: Xóa hàm round không cần thiết
+	# mov.s $f12, $f0
+	# jal round
+	
+	# Lưu y[n]
 	sll $t3, $t0, 2
 	add $t4, $t3, $s2
-	s.s $f0, 0($t4)          # save to y[n]
-	addi $t0, $t0, 1
+	s.s $f0, 0($t4)			 # save to y[n]
+	
+	addi $t0, $t0, 1 # n++
 	j n_loop
 end_n_loop:
+
 	lw $s0, 0($sp)
 	lw $s1, 4($sp)
 	lw $s2, 8($sp)
@@ -982,7 +1030,8 @@ end_n_loop:
 	lw $t3, 28($sp)
 	lw $t4, 32($sp)
 	lw $ra, 36($sp)
-	addi $sp, $sp, 40
+	lw $s4, 40($sp)
+	addi $sp, $sp, 44
 	jr $ra
 	
 # Calculates the mmse value
@@ -1235,48 +1284,56 @@ ftoa:
 	
 	
 	move $s0, $a0
-	move $s2, $s0 # preserves a copy of the address
+	move $s2, $s0 # lưu lại địa chỉ buffer gốc
 	li $s3, 0
 	l.s $f4, float_0
 	c.lt.s $f12, $f4
 	bc1f skip_negative
+	
+	# Xử lý dấu âm
 	addi $t0, $0, 45
 	sb $t0, 0($s0)
 	addi $s0, $s0, 1
 	addi $s3, $s3, 1
 	neg.s $f12, $f12
 skip_negative:
-	trunc.w.s $f1, $f12 # int part
-	cvt.s.w $f3, $f1
-	sub.s $f2, $f12, $f3 # float part
-	mfc1 $t0, $f1 # $t0 now holds the integer part
 	
-	move $a0, $t0
+	# --- SỬA LỖI 1: Tách phần nguyên và thập phân ---
+	trunc.w.s $f1, $f12 	# $f1 = phần nguyên (dạng int)
+	cvt.s.w $f3, $f1		# $f3 = phần nguyên (dạng float)
+	sub.s $f2, $f12, $f3 	# $f2 = phần thập phân (vd: 0.4)
+	mfc1 $t0, $f1 			# $t0 = phần nguyên (dạng int)
+	# --- Hết Sửa 1 ---
+
+	move $a0, $t0			# a0 = phần nguyên
 	move $a1, $s0
 	li $a2 0
 	jal int_to_str
 	
 	move $s0, $v0
-	move $s1, $v1 # $s1 = length of int part
+	move $s1, $v1 # $s1 = độ dài phần nguyên
 	
-	add $t0, $s0, $s1 # $t0 = res + i
+	add $t0, $s0, $s1 # $t0 = con trỏ sau phần nguyên
 	li $t1, 46
-	sb $t1, 0($t0) # write the '.' character
+	sb $t1, 0($t0) # viết dấu '.'
 	
+	# --- SỬA LỖI 2: Tính toán phần thập phân ---
 	l.s $f3, float_10
-	mul.s $f2, $f2, $f3 
-	round.w.s $f2, $f2
-	mfc1 $t1, $f2 # t1 holds the floating point part
+	mul.s $f2, $f2, $f3 	# $f2 = phần thập phân * 10
+	round.w.s $f2, $f2		# làm tròn (vd: 0.4*10 = 4.0)
+	mfc1 $t1, $f2 			# $t1 = số thập phân (vd: 4)
+	# --- Hết Sửa 2 ---
 	
 	move $a0, $t1
-	addi $a1, $t0, 1
-	li $a2, 1
+	addi $a1, $t0, 1		# con trỏ sau dấu '.'
+	li $a2, 1				# luôn in 1 chữ số
 	jal int_to_str
 	
 	move $v0, $s2
-	add $v1, $v1, $s1
-	addi $v1, $v1, 1
-	add $v1, $v1, $s3
+	add $v1, $v1, $s1		# tổng độ dài = (độ dài .0) + (độ dài phần nguyên)
+	addi $v1, $v1, 1		# + 1 cho dấu '.'
+	add $v1, $v1, $s3		# + 1 cho dấu '-' (nếu có)
+	
 	lw $s0, 0($sp)
 	lw $s1, 4($sp)
 	lw $s2, 8($sp)
