@@ -1,4 +1,4 @@
-.data
+ .data
 	input: .asciiz "input.txt"
 	desired: .asciiz "desired.txt"
 	fileWords: .space 4096
@@ -105,28 +105,37 @@ main:
 	jal round
 	s.s $f0, mmse
 	
+	# Step 5: Print to terminal
+	la $a0, output_signal
+	li $a1, 10
+	l.s $f12, mmse
+	jal print_terminal
 	
-	# Step 5: Write output to file
+	# Step 6: Print to terminal
 	la $a0, output_file
 	la $a1, output_signal
 	li $a2, 10
 	l.s $f12, mmse
 	jal write_to_file
 	
-	
-
-	# Step 6: Print to terminal
-	la $a0, output_signal
-	li $a1, 10
-	l.s $f12, mmse
-	jal print_terminal
-	
 	j exit
 	
+				
+
+error_size_mismatch:
+	li	  $v0, 4
+	la	  $a0, str_err_size
+	syscall
+	
+exit:
+	li $v0, 10
+	syscall
+
 print_terminal:
-	addi $sp, $sp, -8
+	addi $sp, $sp, -12
 	sw $s0, 0($sp)
 	sw $s1, 4($sp)
+	s.s $f13, 8($sp)
 	
 	move $s0, $a0
 	move $s1, $a1
@@ -140,17 +149,21 @@ print_terminal:
 print_terminal_loop:
 	beq $t0, $s1, end_print_terminal
 	sll $t2, $t0, 2
-	add $t3, $t2, $t1
+	add $t3, $t2, $s0
 	l.s $f12, 0($t3)
 	li $v0, 2
 	syscall
 	
+	addi $t1, $s1, -1
+	bge $t0, $t1, skip_print_space
+	
 	li $v0, 4
 	la $a0, whitespace
 	syscall
+	
+skip_print_space:
 	addi $t0, $t0, 1
 	j print_terminal_loop
-
 end_print_terminal:
 	
 	li $v0, 4
@@ -161,20 +174,11 @@ end_print_terminal:
 	mov.s $f12, $f13
 	syscall
 	
-
 	lw $s0, 0($sp)
 	lw $s1, 4($sp)
-	addi $sp, $sp, 8
-	jr $ra				
-
-error_size_mismatch:
-	li	  $v0, 4
-	la	  $a0, str_err_size
-	syscall
-	
-exit:
-	li $v0, 10
-	syscall
+	l.s $f13, 8($sp)
+	addi $sp, $sp, 12
+	jr $ra
 
 round:
     l.s $f16, float_10
@@ -1031,13 +1035,12 @@ end_subtract_loop:
 # Arguments: $a0: string containing file name, $a1: array of floats, $a2: size of array, $f12: mmse
 # Returns: N/A
 write_to_file:
-	addi $sp, $sp, -24
+	addi $sp, $sp, -20
 	sw $s0, 0($sp)
 	sw $s1, 4($sp)
 	sw $s2, 8($sp)
 	sw $s3, 12($sp)
-	sw $s4, 16($sp)
-	sw $ra, 20($sp)
+	sw $ra, 16($sp)
 	
 	move $s0, $a0
 	move $s1, $a1
@@ -1049,23 +1052,27 @@ write_to_file:
 	li $a1, 1
 	li $a2, 0
 	syscall
-	
 	move $s3, $v0 #file descriptor
 	
-	li $s4, 0
 	
 	li $v0, 15
 	move $a0, $s3
 	la $a1, output_text
 	li $a2, 17
 	syscall
+	
+	li $t0, 0
 write_loop:
-	bge $s4, $s2, end_loop
-	sll $t1, $s4, 2
+	bge $t0, $s2, end_loop
+	sll $t1, $t0, 2
 	add $t1, $s1, $t1
 	l.s $f12, 0($t1)
 	la $a0, buffer
+	addi $sp, $sp, -4
+	sw $t0, 0($sp)
 	jal ftoa
+	lw $t0, 0($sp)
+	addi $sp, $sp, 4
 	move $t2, $v0 #$t2 contains string to write
 	move $t3, $v1 #$t3 contains string length
 	
@@ -1075,8 +1082,8 @@ write_loop:
 	move $a2, $t3
 	syscall
 	
-	addi $s4, $s4, 1
-	beq $s4, $s2, skip_space
+	addi $t0, $t0, 1
+	beq $t0, $s2, skip_space
 	li $v0, 15
 	move $a0, $s3
 	la $a1, whitespace
@@ -1113,9 +1120,8 @@ end_loop:
 	lw $s1, 4($sp)
 	lw $s2, 8($sp)
 	lw $s3, 12($sp)
-	lw $s4, 16($sp)
-	lw $ra, 20($sp)
-	addi $sp, $sp, 24
+	lw $ra, 16($sp)
+	addi $sp, $sp, 20
 	jr $ra
 # Reverse a string
 # Arguments: $a0: string to reverse, $a1: length of string
